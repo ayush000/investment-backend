@@ -21,8 +21,8 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 app.use(morgan('dev'));
 
-app.get('/api', (req, res, next) => {
-  // res.send({ done: true });
+// API to get unique funds. 
+app.get('/api/unique-funds', (req, res, next) => {
   mutualFund.getUniqueFunds(connection)
     .then(data => {
       res.send({
@@ -32,33 +32,19 @@ app.get('/api', (req, res, next) => {
     .catch(err => next(err));
 });
 
-app.get('/abc', (req, res, next) => {
-  mutualFund.getParsedData()
-    .then(data => {
-      res.json(data);
-    })
+// Function to import to mysql
+app.get('/import', (req, res, next) => {
+  const start = '01-Apr-2015',
+    end = '01-Apr-2016',
+    start2 = '02-Apr-2016',
+    end2 = moment().format('DD-MMM-YYYY');
+  mutualFund.importData(connection, start, end)
+    .then(() => mutualFund.importData(connection, start2, end2))
     .catch(err => next(err));
 });
 
-// Function to import to mysql
-app.get('/import', (req, res, next) => {
-  mutualFund.getParsedData()
-    .then(data => {
-      const insertData = data.map(row => [
-        row.name,
-        row.value,
-        moment(row.date).format('YYYY-MM-DD')
-      ]);
-      const q = connection.query('INSERT INTO funds (name, value, date) VALUES ?', [insertData], (err) => {
-        // eslint-disable-next-line no-console
-        console.log(q.sql);
-        if (err) return next(err);
-        res.send({ done: true });
-      });
-      // res.send(insertData);
-    });
-});
-
+// Receives input from form and stores a new fund with a start and end date.
+// One fund can only be present once.
 app.post('/api/new-fund', (req, res, next) => {
   const {
     amountInvested,
@@ -89,6 +75,7 @@ app.post('/api/new-fund', (req, res, next) => {
   }).catch(err => next(err));
 });
 
+// API to display all the funds added
 app.get('/api/user-funds', (req, res, next) => {
   mutualFund.getFunds(connection)
     .then(data => { res.send(data); })
