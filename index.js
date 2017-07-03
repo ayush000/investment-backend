@@ -5,6 +5,8 @@ const morgan = require('morgan');
 const mutualFund = require('./lib/mutual-fund');
 const mysql = require('mysql');
 const moment = require('moment-timezone');
+
+// Enter mysql credentials
 const connection = mysql.createConnection({
   host: 'localhost',
   user: 'ayush',
@@ -47,8 +49,8 @@ app.get('/import', (req, res, next) => {
         row.value,
         moment(row.date).format('YYYY-MM-DD')
       ]);
-      console.log(insertData[0]);
       const q = connection.query('INSERT INTO funds (name, value, date) VALUES ?', [insertData], (err) => {
+        // eslint-disable-next-line no-console
         console.log(q.sql);
         if (err) return next(err);
         res.send({ done: true });
@@ -57,29 +59,40 @@ app.get('/import', (req, res, next) => {
     });
 });
 
-app.post('/api/current-value', (req, res, next) => {
+app.post('/api/new-fund', (req, res, next) => {
   const {
     amountInvested,
     selectedFund,
     purchaseDate } = req.body;
   const date = moment(purchaseDate).format('YYYY-MM-DD');
-  console.log(date);
-  mutualFund.getValueForDate(connection, selectedFund, date)
-    .then(valueOfOne => {
-      const unitsPurchased = amountInvested / valueOfOne;
-      const dateYday = moment()
-        .subtract(1, 'day')
-        .format('YYYY-MM-DD');
-      mutualFund.getValueForDate(connection, selectedFund, dateYday)
-        .then(valueOfOneYday => {
-          const valueYday = unitsPurchased * valueOfOneYday;
-          console.log({ unitsPurchased, valueOfOne, valueOfOneYday, valueYday });
-          res.send({ data: valueYday });
-        })
-        .catch(err => next(err));
-    })
+  const dateYday = moment()
+    .subtract(1, 'day')
+    .format('YYYY-MM-DD');
+  Promise.all([
+    mutualFund.getValueForDate(connection, selectedFund, date),
+    mutualFund.getValueForDate(connection, selectedFund, dateYday)
+  ]).then(data => {
+    const valueOfOne = data[0];
+    const valueOfOneYday = data[1];
+    const unitsPurchased = amountInvested / valueOfOne;
+    const valueYday = unitsPurchased * valueOfOneYday;
+    mutualFund.addFund(connection, selectedFund, unitsPurchased)
+      .then(id => {
+        res.send({
+          id,
+          units: unitsPurchased,
+          fundName: selectedFund,
+          value: valueYday,
+        });
+      })
+      .catch(err => next(err));
+  }).catch(err => next(err));
+});
+
+app.get('/api/user-funds', (req, res, next) => {
+  mutualFund.getFunds(connection)
+    .then(data => { res.send(data); })
     .catch(err => next(err));
-  // res.send({ done: true });
 });
 
 app.listen(3005, (err) => {
